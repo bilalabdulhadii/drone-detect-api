@@ -1,55 +1,57 @@
 # Drone Detector API ✅
 
-A lightweight YOLOv8-based drone detection project that provides:
+A YOLOv8-based drone detection backend with a clean FastAPI interface.
 
-- A FastAPI server that exposes an image detection endpoint (`POST /detect`).
-- Simple scripts to run detection on images and videos (`detect-img.py`, `detect-cam.py`).
-- Training utilities and a training entrypoint (`main.py`) using Ultralytics YOLO.
+This repository provides a production-ready backend API that runs inference with a pre-trained YOLO model and exposes a single image detection endpoint for easy integration with frontends (e.g. React).
 
 ---
 
 ## 🔧 Features
 
-- Single-shot YOLOv8 model (weights: `51ep-16-GPU.pt`) loaded on startup for fast inference
-- API: upload an image and receive bounding boxes, confidence, class id/name
-- Optional base64-encoded annotated image return (`return_image=true`)
-- Example scripts for image and video processing
+- FastAPI server exposing `POST /detect` for image uploads
+- Model loaded once at startup for efficient inference
+- Optional annotated image return (`return_image=true`)
+- Healthy separation between routing and inference logic
 
 ---
 
 ## ⚙️ Requirements
 
 - Python 3.10+
-- macOS / Linux / Windows
-- GPU recommended (MPS for Apple Silicon or CUDA) but CPU works
 
-Install minimal Python deps:
+Install dependencies:
 
 ```bash
 pip install -r requirements.txt
-# For the API server you also need:
-pip install fastapi uvicorn python-multipart
+# If you need a specific PyTorch build (CUDA/MPS/CPU), install it explicitly following https://pytorch.org/
 ```
+
+> Note: `opencv-python-headless` is used for server environments (no GUI).
 
 ---
 
-## 🚀 Quickstart
+## 🚀 Quickstart (local)
 
-1. Make sure the model weights are present in the repo root: `51ep-16-GPU.pt`.
-2. Start the FastAPI server:
+1. Ensure the model weights `51ep-16-GPU.pt` are present in the repository root (or set `MODEL_PATH` to a different path).
+2. Start the API server:
 
 ```bash
-uvicorn app.main:app --reload
+# recommended (works locally and in Railway):
+uvicorn main:app --reload
+
+# production:
+uvicorn main:app --host 0.0.0.0 --port $PORT
 ```
 
-- The detection endpoint will be available at: `POST http://127.0.0.1:8000/detect/`.
+- Health-check: `GET /` → returns `{ "status": "ok" }`
+- Detection endpoint: `POST /detect/` (multipart form with `file` field)
 
 ---
 
 ## 🧪 API: POST /detect
 
-- Content type: `multipart/form-data` with field `file` (image upload)
-- Optional query param: `return_image` (boolean). If `true`, the response JSON will include `annotated_image` (base64-encoded JPEG).
+- Content type: `multipart/form-data` with `file` (image upload)
+- Optional query param: `return_image` (boolean). If `true` the response includes `annotated_image` (base64-encoded JPEG)
 
 Response example:
 
@@ -72,58 +74,41 @@ curl -X POST "http://127.0.0.1:8000/detect/?return_image=true" \
 
 ---
 
-## ▶️ Run detection scripts
+## 📦 Deployment on Railway
 
-- Detect on images in `test-img/` (shows annotated frames):
-
-```bash
-python detect-img.py
-```
-
-- Detect on videos in `test-video/` and write annotated video files:
+Railway will detect Python projects and can run the app with the following command:
 
 ```bash
-python detect-cam.py
+uvicorn main:app --host 0.0.0.0 --port $PORT
 ```
 
----
+You can also add a `Procfile` with:
 
-## 🧠 Training
-
-Training entrypoint: `main.py`.
-
-```bash
-python main.py
+```
+web: uvicorn main:app --host 0.0.0.0 --port $PORT
 ```
 
-It will attempt to resume from the most recent checkpoint in `runs/detect/*/weights/last.pt`. If none found, it will try to use `51ep-16-GPU.pt` or fall back to a yolov8 base model.
+Set environment variables in Railway:
 
-Training options (set in `main.py`): epochs, batch size, img size, mixed precision, caching.
+- `MODEL_PATH` (optional) — path to the model weights in the project or a remote location
+- `ALLOWED_ORIGINS` (optional) — comma-separated origins for CORS
 
----
-
-## 📁 Project layout
-
-- `app/` - FastAPI app and routes (`/detect`)
-- `detect-img.py` - run model on images
-- `detect-cam.py` - run model on videos
-- `main.py` - training entrypoint
-- `51ep-16-GPU.pt` - model weights (checkpoint)
-- `data.yaml` - dataset config used for training
-- `drone_dataset_yolo/` - dataset files (labels / txts)
+Railway will set `$PORT` automatically; the server reads it when starting via `uvicorn`.
 
 ---
 
-## 💡 Notes & Tips
+## ▶️ Local utilities
 
-- The server loads the model at startup to avoid reloading on each request. If model fails to load, check logs and weight path.
-- For best performance on Apple Silicon use MPS (`torch.backends.mps`), for NVIDIA GPUs use CUDA.
+- `detect-img.py` — run the model on images from `test-img/` (interactive/show annotated frames)
+- `detect-cam.py` — run the model on a camera or video file
+- `train.py` — training entrypoint (migrated from `main.py` to keep `main.py` as the API entrypoint)
 
 ---
 
-## Contributing
+## ✅ Notes
 
-Contributions are welcome. Open an issue or submit a pull request with a clear description of changes.
+- The model is loaded at startup and stored on `app.state.model` to avoid reloading per request.
+- The API enforces basic validation and file size limits to improve safety and reliability.
 
 ---
 

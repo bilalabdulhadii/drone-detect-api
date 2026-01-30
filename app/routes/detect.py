@@ -19,9 +19,10 @@ from typing import Optional, List, Dict, Any
 import numpy as np
 import cv2 as cv
 import base64
-import io
+import logging
 
 router = APIRouter()
+logger = logging.getLogger("uvicorn.error")
 
 
 def _read_image_from_upload(file_bytes: bytes) -> np.ndarray:
@@ -41,21 +42,40 @@ async def detect(
 
     The YOLO model is expected to be available from `request.app.state.model` (set at startup).
     """
-    # Get model from app state - ensure startup loaded it
-    model = getattr(request.app.state, "model", None)
-    if model is None:
-        raise HTTPException(status_code=500, detail="Model is not loaded")
+    # Basic validation
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="No file uploaded")
+
+    if not file.content_type or not file.content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail=f"Invalid content type: {file.content_type}")
 
     # Read bytes from upload and decode into numpy image (BGR)
     file_bytes = await file.read()
+    if not file_bytes:
+        raise HTTPException(status_code=400, detail="Uploaded file is empty")
+
+    # Limit file size to 10MB (protect server)
+    max_size = 10 * 1024 * 1024
+    if len(file_bytes) > max_size:
+        raise HTTPException(status_code=413, detail="Uploaded file is too large")
+
     img = _read_image_from_upload(file_bytes)
     if img is None:
         raise HTTPException(status_code=400, detail="Could not decode uploaded image")
 
-    # Run inference
-    # NOTE: ultralytics YOLO returns a Results object; running model(img) returns a list-like
-    # object where results[0] contains boxes, masks, keypoints, etc.
-    results = model(img)
+    # Get model from app state - ensure startup loaded it
+    model = getattr(request.app.state, "model", None)
+    if model is None:
+        logger.error("Model not available on app state")
+        raise HTTPException(status_code=500, detail="Model is not loaded")
+
+    # Run inference (catch runtime errors from model)
+    try:
+        results = model(img)
+    except Exception:
+        logger.exception("Model inference failed")
+        raise HTTPException(status_code=500, detail="Model inference failed")
+
     if len(results) == 0:
         return {"detections": []}
 
@@ -72,7 +92,7 @@ async def detect(
             confs = boxes.conf.cpu().numpy() if hasattr(boxes.conf, "cpu") else np.array(boxes.conf)
             classes = boxes.cls.cpu().numpy() if hasattr(boxes.cls, "cpu") else np.array(boxes.cls)
         except Exception:
-            # Fallback: try to treat attributes as lists
+            # Fallback: try to treat attributes as lists/ndarrays
             xyxy = np.array(boxes.xyxy)
             confs = np.array(boxes.conf)
             classes = np.array(boxes.cls)
@@ -104,8 +124,8 @@ async def detect(
             if not success:
                 raise RuntimeError("Failed to encode annotated image")
             annotated_b64 = base64.b64encode(encoded.tobytes()).decode("utf-8")
-        except Exception as exc:
-            # Do not fail the whole request if annotation fails; include a warning instead
+        except Exception:
+            logger.exception("Failed to create annotated image; continuing without it")
             annotated_b64 = None
 
     response: Dict[str, Any] = {"detections": detections}

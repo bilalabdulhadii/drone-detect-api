@@ -6,11 +6,10 @@
 
 Run locally:
 
-pip install fastapi uvicorn python-multipart
-# also install dependencies in repo:
 pip install -r requirements.txt
-uvicorn app.main:app --reload
+uvicorn main:app --reload
 """
+import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import logging
@@ -24,9 +23,16 @@ logger = logging.getLogger("uvicorn")
 app = FastAPI(title="cnn-course YOLO Detection API")
 
 # Simple CORS config to allow a React frontend running on a different host to call this API.
+# In production, restrict origins via the ALLOWED_ORIGINS env var (comma-separated list).
+allow_origins = os.getenv("ALLOWED_ORIGINS", "*")
+if allow_origins == "*":
+    origins = ["*"]
+else:
+    origins = [o.strip() for o in allow_origins.split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # For production set this to your frontend origin(s)
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -36,11 +42,18 @@ app.add_middleware(
 app.include_router(detect_router.router, prefix="/detect", tags=["detect"])
 
 
+@app.get("/", summary="Health check")
+async def health():
+    """Simple health-check for uptime / readiness."""
+    return {"status": "ok", "message": "drone-detector-api is running"}
+
+
 @app.on_event("startup")
 async def load_model_on_startup():
     """Load the YOLO model once during application startup and store on app.state.
 
     This ensures the model is not reloaded on every request, improving performance.
+    Model path can be set via the MODEL_PATH env var.
     """
     # Choose device similarly to existing project training script (main.py)
     if torch.backends.mps.is_available():
@@ -51,7 +64,7 @@ async def load_model_on_startup():
         device = "cpu"
 
     try:
-        model_path = "51ep-16-GPU.pt"
+        model_path = os.getenv("MODEL_PATH", "51ep-16-GPU.pt")
         logger.info(f"Loading model {model_path} on device={device}")
         # Load model; ultralytics internally manages device allocation but we log the selection
         app.state.model = YOLO(model_path)
