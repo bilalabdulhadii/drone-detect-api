@@ -95,6 +95,9 @@ Set environment variables in Railway:
 
 Railway will set `$PORT` automatically; the server reads it when starting via `uvicorn`.
 
+If you run into build issues on Railway, this repo includes a `Dockerfile` with the
+system libraries needed by OpenCV. Railway will auto-detect and use it.
+
 ---
 
 ## ▶️ Local utilities

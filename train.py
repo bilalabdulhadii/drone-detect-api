@@ -14,7 +14,8 @@ import torch
 from ultralytics import YOLO
 
 # Check available device
-if torch.backends.mps.is_available():
+mps_backend = getattr(torch.backends, "mps", None)
+if mps_backend is not None and torch.backends.mps.is_available():
     device = "mps"  # Apple Silicon GPU
 elif torch.cuda.is_available():
     device = "cuda"

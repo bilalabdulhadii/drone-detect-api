@@ -1,0 +1,9 @@
+.git
+.venv
+.DS_Store
+__pycache__
+*.pyc
+runs
+drone_dataset_yolo
+test-img
+test-video

@@ -56,7 +56,8 @@ async def load_model_on_startup():
     Model path can be set via the MODEL_PATH env var.
     """
     # Choose device similarly to existing project training script (main.py)
-    if torch.backends.mps.is_available():
+    mps_backend = getattr(torch.backends, "mps", None)
+    if mps_backend is not None and torch.backends.mps.is_available():
         device = "mps"
     elif torch.cuda.is_available():
         device = "cuda"
